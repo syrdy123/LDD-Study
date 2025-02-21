@@ -1,1 +1,0 @@
-savedcmd_/home/ubuntu/workspace/driver_practice/completion_test/modules.order := {   echo /home/ubuntu/workspace/driver_practice/completion_test/completion_test.o; :; } > /home/ubuntu/workspace/driver_practice/completion_test/modules.order

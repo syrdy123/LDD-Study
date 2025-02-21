@@ -1,1 +1,0 @@
-savedcmd_/home/ubuntu/workspace/driver_practice/scull_cdev/scull.o := ld -m elf_x86_64 -z noexecstack --no-warn-rwx-segments   -r -o /home/ubuntu/workspace/driver_practice/scull_cdev/scull.o @/home/ubuntu/workspace/driver_practice/scull_cdev/scull.mod 

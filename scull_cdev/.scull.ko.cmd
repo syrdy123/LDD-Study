@@ -1,1 +1,0 @@
-savedcmd_/home/ubuntu/workspace/driver_practice/scull_cdev/scull.ko := ld -r -m elf_x86_64 -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T scripts/module.lds -o /home/ubuntu/workspace/driver_practice/scull_cdev/scull.ko /home/ubuntu/workspace/driver_practice/scull_cdev/scull.o /home/ubuntu/workspace/driver_practice/scull_cdev/scull.mod.o

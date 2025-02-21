@@ -1,1 +1,0 @@
-savedcmd_/home/ubuntu/workspace/driver_practice/scull_cdev/modules.order := {   echo /home/ubuntu/workspace/driver_practice/scull_cdev/scull.o; :; } > /home/ubuntu/workspace/driver_practice/scull_cdev/modules.order
