@@ -1,0 +1,1 @@
+savedcmd_/home/ubuntu/workspace/driver_practice/scull_cdev/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/ubuntu/workspace/driver_practice/scull_cdev/Module.symvers -T /home/ubuntu/workspace/driver_practice/scull_cdev/modules.order -i Module.symvers -e 

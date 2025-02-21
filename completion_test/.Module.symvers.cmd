@@ -1,0 +1,1 @@
+savedcmd_/home/ubuntu/workspace/driver_practice/completion_test/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/ubuntu/workspace/driver_practice/completion_test/Module.symvers -T /home/ubuntu/workspace/driver_practice/completion_test/modules.order -i Module.symvers -e 
