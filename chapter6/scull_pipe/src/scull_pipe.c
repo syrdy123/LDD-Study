@@ -162,6 +162,10 @@ static int get_writespace(struct scull_pipe *dev, struct file *filp){
         //休眠完成，从休眠状态转变为调度状态
         finish_wait(&dev->outq, &wait);
 
+        /*
+            signal_pending用于判断当前进程是否还有未处理的信号，如果有的话这里直接返回先处理信号
+            而不是继续执行进程
+        */
         if(signal_pending(current))
             return -ERESTARTSYS;
 
