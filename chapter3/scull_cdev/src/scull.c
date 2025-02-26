@@ -167,6 +167,33 @@ out:
     return ret;
 }
 
+
+static loff_t scull_llseek(struct file *filp, loff_t off, int whence){
+    struct scull_dev *dev = filp->private_data;
+    loff_t new_pos = 0;
+
+    while(whence){
+        case 0: /*SEEK_SET*/
+            new_pos = off;
+            break;
+
+        case 1: /*SEEK_CUR*/
+            new_pos = filp->f_pos + off;
+            break;
+
+        case 2: /*SEEK_END*/
+            new_pos = dev->size + off;
+            break;
+
+        default:
+            return -EINVAL;
+    }
+
+    if(new_pos < 0) return -EINVAL;
+    filp->f_pos = new_pos;
+    return new_pos;
+}
+
 static int scull_open(struct inode *node, struct file *filp) {
     struct scull_dev *dev = NULL;
     dev = container_of(node->i_cdev, struct scull_dev, cdev);
@@ -192,7 +219,8 @@ static struct file_operations scull_fops = {
     .read    = scull_read,
     .write   = scull_write,
     .open    = scull_open,
-    .release = scull_release
+    .release = scull_release,
+    .llseek  = scull_llseek
 };
 
 static void scull_setup_cdev(struct scull_dev *dev, int index) {

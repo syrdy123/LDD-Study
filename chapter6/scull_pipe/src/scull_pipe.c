@@ -6,6 +6,7 @@
 #include <linux/cdev.h>
 #include <linux/slab.h>
 #include <asm/uaccess.h>
+#include <linux/poll.h>
 
 #include "scull.h"
 
@@ -71,6 +72,10 @@ static int scull_p_open(struct inode *inode, struct file *filp){
 
     up(&dev->sem);
 
+    /*
+        管道是fifo的机构，不支持“随机访问”，也就是不支持llseek定位操作，所以这里直接声明scull_pipe
+        通过调用 nonseekable_open
+    */
     return nonseekable_open(inode, filp);
 }
 
@@ -220,6 +225,27 @@ static ssize_t scull_p_write(struct file *filp, const char __user *buf, size_t c
 	return count;
 }
 
+static unsigned int scull_p_poll(struct file *filp, poll_table *wait)
+{
+	struct scull_pipe *dev = filp->private_data;
+	unsigned int mask = 0;
+
+	down(&dev->sem);
+	poll_wait(filp, &dev->inq,  wait);
+	poll_wait(filp, &dev->outq, wait);
+	
+	//有数据可读
+	if (dev->rp != dev->wp)
+		mask |= POLLIN | POLLRDNORM;
+	
+	//有空间可写
+	if (spacefree(dev))
+		mask |= POLLOUT | POLLWRNORM;
+		
+	up(&dev->sem);
+	return mask;
+}
+
 
 static int scull_p_fasync(int fd, struct file *filp, int mode)
 {
@@ -231,12 +257,13 @@ static int scull_p_fasync(int fd, struct file *filp, int mode)
 
 struct file_operations scull_pipe_fops = {
 	.owner =	THIS_MODULE,
-	.llseek =	no_llseek,
+	.llseek =	no_llseek,                    //声明当前scull_pipe 不支持llseek操作
 	.read =		scull_p_read,
 	.write =	scull_p_write,
 	.open =		scull_p_open,
 	.release =	scull_p_release,
-	.fasync =	scull_p_fasync
+	.fasync =	scull_p_fasync,
+    .poll = scull_p_poll
 };
 
 
