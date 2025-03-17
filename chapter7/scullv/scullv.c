@@ -5,53 +5,55 @@
 #include <linux/sched.h>
 #include <linux/cdev.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include <asm/uaccess.h>
 
 #include "scull.h"
 
 static dev_t dev_num;
-static int scullp_order   = SCULL_ORDER;
-static int scullp_major   = SCULL_MAJOR;
-static int scullp_minor   = SCULL_MINOR;
-static int scullp_nr_devs = SCULL_NR_DEVS;
-static int scullp_quantum = SCULL_QUANTUM;
-static int scullp_qset    = SCULL_QSET;
+static int scullv_order   = SCULL_ORDER;
+static int scullv_major   = SCULL_MAJOR;
+static int scullv_minor   = SCULL_MINOR;
+static int scullv_nr_devs = SCULL_NR_DEVS;
+static int scullv_quantum = SCULL_QUANTUM;
+static int scullv_qset    = SCULL_QSET;
 
-static struct scull_dev *sculldev = NULL;
+static struct scull_dev *scullv_dev = NULL;
 
-module_param(scullp_order, int, S_IRUGO);
-module_param(scullp_major, int, S_IRUGO);
-module_param(scullp_nr_devs, int, S_IRUGO);
-module_param(scullp_quantum, int, S_IRUGO);
-module_param(scullp_qset, int, S_IRUGO);
+module_param(scullv_order, int, S_IRUGO);
+module_param(scullv_major, int, S_IRUGO);
+module_param(scullv_nr_devs, int, S_IRUGO);
+module_param(scullv_quantum, int, S_IRUGO);
+module_param(scullv_qset, int, S_IRUGO);
 
-static int scullp_trim(struct scull_dev *dev) {
+static int scullv_trim(struct scull_dev *dev) {
     struct scull_qset_t *ptr, *next;
     int qset = dev->qset;
 
     for (ptr = dev->data; ptr; ) {
         if (ptr->data) {
             for (int i = 0; i < qset; ++i) {
-                free_pages((unsigned long)(ptr->data[i]), dev->order);
+                if (ptr->data[i])
+                    vfree(ptr->data[i]);
             }
             kfree(ptr->data);
             ptr->data = NULL;
         }
+
         next = ptr->next;
         kfree(ptr);
         ptr = next;
     }
 
-    dev->order = scullp_order;
+    dev->order = scullv_order;
     dev->size = 0;
-    dev->quantum = scullp_quantum;
-    dev->qset = scullp_qset;
+    dev->quantum = scullv_quantum;
+    dev->qset = scullv_qset;
     dev->data = NULL;
-
     return 0;
 }
 
-static struct scull_qset_t *scullp_follow(struct scull_dev *dev, int index) {
+static struct scull_qset_t *scullv_follow(struct scull_dev *dev, int index) {
     struct scull_qset_t *ptr = dev->data;
 
     if (!ptr) {
@@ -76,7 +78,7 @@ static struct scull_qset_t *scullp_follow(struct scull_dev *dev, int index) {
     return ptr;
 }
 
-static ssize_t scullp_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos) {
+static ssize_t scullv_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos) {
     struct scull_dev *dev = filp->private_data;
     struct scull_qset_t *ptr = NULL;
     int quantum = dev->quantum, qset = dev->qset;
@@ -94,7 +96,7 @@ static ssize_t scullp_read(struct file *filp, char __user *buf, size_t count, lo
     rest = (long)*f_pos % itemsize;
     s_pos = rest / quantum, q_pos = rest % quantum;
 
-    ptr = scullp_follow(dev, item);
+    ptr = scullv_follow(dev, item);
 
     if (NULL == ptr || !ptr->data || !ptr->data[s_pos])
         goto out;
@@ -116,7 +118,7 @@ out:
     return ret;
 }
 
-static ssize_t scullp_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos) {
+static ssize_t scullv_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos) {
     struct scull_dev *dev = filp->private_data;
     struct scull_qset_t *ptr = NULL;
     int quantum = dev->quantum, qset = dev->qset;
@@ -131,7 +133,7 @@ static ssize_t scullp_write(struct file *filp, const char __user *buf, size_t co
     rest = (long)*f_pos % itemsize;
     s_pos = rest / quantum, q_pos = rest % quantum;
 
-    ptr = scullp_follow(dev, item);
+    ptr = scullv_follow(dev, item);
 
     if (NULL == ptr)
         goto out;
@@ -144,7 +146,7 @@ static ssize_t scullp_write(struct file *filp, const char __user *buf, size_t co
     }
 
     if (!ptr->data[s_pos]) {
-        ptr->data[s_pos] = (void *)__get_free_pages(GFP_KERNEL, dev->order);
+        ptr->data[s_pos] = vmalloc(PAGE_SIZE << dev->order);
         if (!ptr->data[s_pos])
             goto out;
 
@@ -173,7 +175,7 @@ out:
 }
 
 
-static loff_t scullp_llseek(struct file *filp, loff_t off, int whence)
+static loff_t scullv_llseek(struct file *filp, loff_t off, int whence)
 {
     struct scull_dev *dev = filp->private_data;
     loff_t new_pos = 0;
@@ -202,13 +204,13 @@ static loff_t scullp_llseek(struct file *filp, loff_t off, int whence)
     return new_pos;
 }
 
-static int scullp_open(struct inode *node, struct file *filp) {
+static int scullv_open(struct inode *node, struct file *filp) {
     struct scull_dev *dev = NULL;
     dev = container_of(node->i_cdev, struct scull_dev, cdev);
     filp->private_data = dev;
 
     if ((filp->f_flags & O_ACCMODE) == O_WRONLY) {
-        scullp_trim(dev);
+        scullv_trim(dev);
         dev->data = kmalloc(sizeof(struct scull_qset_t), GFP_KERNEL);
         if (!dev->data)
             return -ENOMEM;
@@ -218,21 +220,21 @@ static int scullp_open(struct inode *node, struct file *filp) {
     return 0;
 }
 
-static int scullp_release(struct inode *node, struct file *filp) {
+static int scullv_release(struct inode *node, struct file *filp) {
     return 0;
 }
 
 static struct file_operations scull_fops = {
     .owner   = THIS_MODULE,
-    .read    = scullp_read,
-    .write   = scullp_write,
-    .open    = scullp_open,
-    .release = scullp_release,
-    .llseek  = scullp_llseek
+    .read    = scullv_read,
+    .write   = scullv_write,
+    .open    = scullv_open,
+    .release = scullv_release,
+    .llseek  = scullv_llseek
 };
 
 static void scullp_setup_cdev(struct scull_dev *dev, int index) {
-    int err, devno = MKDEV(scullp_major, scullp_minor + index);
+    int err, devno = MKDEV(scullv_major, scullv_minor + index);
     cdev_init(&dev->cdev, &scull_fops);
     dev->cdev.owner = THIS_MODULE;
     dev->cdev.ops = &scull_fops;
@@ -242,81 +244,81 @@ static void scullp_setup_cdev(struct scull_dev *dev, int index) {
     }
 }
 
-static int scullp_chrdev_register(void) {
+static int scullv_chrdev_register(void) {
     int ret;
-    if (scullp_major) {
-        dev_num = MKDEV(scullp_major, scullp_minor);
-        ret = register_chrdev_region(dev_num, scullp_nr_devs, "scullp");
+    if (scullv_major) {
+        dev_num = MKDEV(scullv_major, scullv_minor);
+        ret = register_chrdev_region(dev_num, scullv_nr_devs, "scullv");
     } 
     else {
-        ret = alloc_chrdev_region(&dev_num, scullp_minor, scullp_nr_devs, "scullp");
-        scullp_major = MAJOR(dev_num);
+        ret = alloc_chrdev_region(&dev_num, scullv_minor, scullv_nr_devs, "scullv");
+        scullv_major = MAJOR(dev_num);
     }
     return ret;
 }
 
-static void __exit scullp_exit(void) {
-    if (sculldev) {
-        for (int i = 0; i < scullp_nr_devs; ++i) {
-            scullp_trim(&sculldev[i]);
-            cdev_del(&sculldev[i].cdev);
+static void __exit scullv_exit(void) {
+    if (scullv_dev) {
+        for (int i = 0; i < scullv_nr_devs; ++i) {
+            scullv_trim(&scullv_dev[i]);
+            cdev_del(&scullv_dev[i].cdev);
         }
-        kfree(sculldev);
+        kfree(scullv_dev);
     }
 
 
-    unregister_chrdev_region(dev_num, scullp_nr_devs);
+    unregister_chrdev_region(dev_num, scullv_nr_devs);
     printk(KERN_INFO "scullp exit success!\n");
 }
 
-static int __init scullp_init(void) {
-    int ret = scullp_chrdev_register();
+static int __init scullv_init(void) {
+    int ret = scullv_chrdev_register();
     if (ret) {
         printk(KERN_ERR "failed to scull_chrdev_register, ret is %d!\n", ret);
     }
 
-    printk(KERN_INFO "[%s] Get dev major number is %d\n", __func__, scullp_major);
+    printk(KERN_INFO "[%s] Get dev major number is %d\n", __func__, scullv_major);
 
-    sculldev = kmalloc(sizeof(struct scull_dev) * scullp_nr_devs, GFP_KERNEL);
-    if (!sculldev) {
+    scullv_dev = kmalloc(sizeof(struct scull_dev) * scullv_nr_devs, GFP_KERNEL);
+    if (!scullv_dev) {
         ret = -ENOMEM;
         goto err;
     }
 
-    memset(sculldev, 0, sizeof(struct scull_dev) * scullp_nr_devs);
-    for (int i = 0; i < scullp_nr_devs; ++i) {
-        sculldev[i].quantum = scullp_quantum;
-        sculldev[i].qset = scullp_qset;
-        sculldev[i].size = 0;
-        sculldev[i].access_key = 0;
-        sema_init(&sculldev[i].sem, 1);
-        scullp_setup_cdev(&sculldev[i], i);
+    memset(scullv_dev, 0, sizeof(struct scull_dev) * scullv_nr_devs);
+    for (int i = 0; i < scullv_nr_devs; ++i) {
+        scullv_dev[i].quantum = scullv_quantum;
+        scullv_dev[i].qset = scullv_qset;
+        scullv_dev[i].size = 0;
+        scullv_dev[i].access_key = 0;
+        sema_init(&scullv_dev[i].sem, 1);
+        scullp_setup_cdev(&scullv_dev[i], i);
     }
 
-    printk(KERN_INFO "scullp init success!\n");
+    printk(KERN_INFO "scullv init success!\n");
 
 err:
     if (ret) {
-        if (sculldev) {
-            for (int i = 0; i < scullp_nr_devs; ++i) {
-                scullp_trim(&sculldev[i]);
-                cdev_del(&sculldev[i].cdev);
+        if (scullv_dev) {
+            for (int i = 0; i < scullv_nr_devs; ++i) {
+                scullv_trim(&scullv_dev[i]);
+                cdev_del(&scullv_dev[i].cdev);
             }
 
-            kfree(sculldev);
+            kfree(scullv_dev);
         }
 
-        unregister_chrdev_region(dev_num, scullp_nr_devs);
-        printk(KERN_INFO "scullp init failed, no memory!\n");
+        unregister_chrdev_region(dev_num, scullv_nr_devs);
+        printk(KERN_INFO "scullv init failed, no memory!\n");
     }
 
     return ret;
 }
 
-module_init(scullp_init);
-module_exit(scullp_exit);
+module_init(scullv_init);
+module_exit(scullv_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_VERSION("v1.0");
 MODULE_AUTHOR("dinggongwurusai");
-MODULE_DESCRIPTION("A Simple Character Device Driver Demo By get_free_pages");
+MODULE_DESCRIPTION("A Simple Character Device Driver Demo By vmalloc");
